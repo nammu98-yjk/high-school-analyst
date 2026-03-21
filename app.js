@@ -342,7 +342,19 @@ class App {
         if (!this.els.schoolTableBody) return;
         this.els.schoolTableBody.innerHTML = '';
         
-        results.sort((a, b) => b.totalScore - a.totalScore).forEach((r, i) => {
+        // 점수 내림차순 정렬
+        results.sort((a, b) => b.totalScore - a.totalScore);
+        
+        let currentRank = 1;
+        let lastScore = -1;
+
+        results.forEach((r, i) => {
+            // 공동 순위 계산 (점수가 같으면 같은 등수 부여)
+            if (r.totalScore !== lastScore) {
+                currentRank = i + 1;
+            }
+            lastScore = r.totalScore;
+
             const gradeClass = (r.grade || 'e').toLowerCase();
             const s = r.scores;
             const raw = r.raw;
@@ -351,7 +363,7 @@ class App {
             // 기본 행
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${i + 1}. ${r.name}</td>
+                <td>${currentRank}. ${r.name}</td>
                 <td><span class="tag ${gradeClass}">${r.grade}</span></td>
                 <td><strong>${r.totalScore}점</strong></td>
                 <td>${s.studentsPerHigh}점</td>
@@ -392,13 +404,16 @@ class App {
             tr.addEventListener('click', () => {
                 const isActive = detailTr.classList.contains('active');
                 
-                // 다른 모든 행 닫기 (선택사항: 원치 않으면 삭제 가능)
+                // 다른 모든 행 닫기
                 document.querySelectorAll('.detail-row').forEach(row => row.classList.remove('active'));
                 
                 if (!isActive) {
                     detailTr.classList.add('active');
                     this.renderMiniChart(chartId, s);
                 }
+                
+                // 클릭 시 메인 차트/점수도 업데이트
+                this.updateChartAndScore(r);
             });
 
             this.els.schoolTableBody.appendChild(tr);
