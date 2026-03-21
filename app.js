@@ -477,9 +477,15 @@ class App {
 
         sorted.forEach((s) => {
             const tr = document.createElement('tr');
+            const mapUrl = `https://map.naver.com/p/search/${encodeURIComponent(s.schoolName)}`;
+            
             tr.innerHTML = `
                 <td>${s.districtName}</td>
-                <td><strong>${s.schoolName}</strong></td>
+                <td>
+                    <a href="${mapUrl}" target="_blank" class="school-link" title="네이버 지도에서 보기">
+                        <strong>${s.schoolName}</strong> <span class="map-icon">📍</span>
+                    </a>
+                </td>
                 <td class="num-cell">${s.avg.toLocaleString()}명</td>
                 <td class="num-cell">${s.g1.toLocaleString()}명</td>
                 <td class="num-cell">${s.g2.toLocaleString()}명</td>
