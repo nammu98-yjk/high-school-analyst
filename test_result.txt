@@ -1,0 +1,5 @@
+﻿요청 URL: https://api.odcloud.kr/api/15097972/v1/uddi:a7a3e616-d680-42b9-ae74-f2c5d012da36?serviceKey=709cf20f...
+[기본] Error: HTTPError: HTTP Error 400: Bad Request
+
+--- 인코딩된 키로 재시도 ---
+[인코딩] Error: HTTPError: HTTP Error 400: Bad Request

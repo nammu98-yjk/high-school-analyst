@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>고등학교 어디가?</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet JS & CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.png" type="image/png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+    <div id="app">
+        <header>
+            <div class="logo-wrap">
+                <div class="logo">
+                    <span class="icon">🎓</span>
+                    <h1>고등학교 어디가?</h1>
+                </div>
+                <p class="service-intro">* 본 서비스는 공공데이터를 기반으로 현 대입에 가장 유리한 지역을 찾아주는 서비스입니다.</p>
+            </div>
+        </header>
+
+        <main>
+            <section class="search-section card">
+                <div class="search-controls">
+                    <select id="citySelect">
+                        <option value="">시/도 선택</option>
+                    </select>
+                    <select id="districtSelect" disabled>
+                        <option value="">시/군/구 선택</option>
+                    </select>
+                    <button id="analyzeBtn" class="btn-primary">분석 실행</button>
+                </div>
+            </section>
+
+            <div class="content-grid">
+                <!-- Map Section -->
+                <section class="map-container card">
+                    <div id="map"></div>
+                </section>
+
+                <!-- Analysis Result Section -->
+                <section class="result-section card">
+                    <div class="result-header">
+                        <h2>분석 결과 상세</h2>
+                        <div id="selectedAreaLabel">지역을 선택해주세요</div>
+                        <div id="bestDongLabel" style="color: #58a6ff; font-weight: bold; margin-top: 5px;"></div>
+                    </div>
+                    
+                    <div class="score-summary">
+                        <div class="total-score-badge">
+                            <span class="label">종합 점수</span>
+                            <span id="totalScore">--</span>
+                        </div>
+                        <div class="grade-badge">
+                            <span class="label">등급</span>
+                            <span id="districtGrade">--</span>
+                        </div>
+                    </div>
+
+                    <div class="chart-container">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+
+                    <!-- 상세 점수 목록 삭제됨 -->
+                </section>
+            </div>
+
+            <section class="school-section card">
+                <div class="tabs">
+                    <button class="tab-btn active" id="tabRanking"><span class="icon">📊</span> 지역별 랭킹</button>
+                    <button class="tab-btn" id="tabSchools"><span class="icon">🏫</span> 고등학교현황</button>
+                </div>
+                <div id="tabContentRanking" class="tab-content active">
+                    <div class="table-wrapper">
+                        <table id="schoolTable">
+                            <thead>
+                                <tr>
+                                    <th>지역명</th>
+                                    <th>등급</th>
+                                    <th>종합점수</th>
+                                    <th>고교당 학생수</th>
+                                    <th>학원밀집도</th>
+                                    <th>아파트비중</th>
+                                    <th>내신확보 유리도</th>
+                                    <th>학교밸런스</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schoolTableBody">
+                                <!-- 데이터가 여기에 동적으로 들어갑니다 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 고등학교현황 탭 -->
+                <div id="tabContentSchools" class="tab-content">
+                    <div class="table-wrapper">
+                        <table id="highSchoolTable">
+                            <thead>
+                                <tr>
+                                    <th>지역명</th>
+                                    <th>고등학교명</th>
+                                    <th class="sortable-col">
+                                        평균 학생수
+                                        <div class="sort-btns">
+                                            <button class="sort-btn" data-col="avg" data-dir="desc" title="내림차순">▼</button>
+                                            <button class="sort-btn" data-col="avg" data-dir="asc" title="오름차순">▲</button>
+                                        </div>
+                                    </th>
+                                    <th class="sortable-col">
+                                        1학년 학생수
+                                        <div class="sort-btns">
+                                            <button class="sort-btn" data-col="g1" data-dir="desc" title="내림차순">▼</button>
+                                            <button class="sort-btn" data-col="g1" data-dir="asc" title="오름차순">▲</button>
+                                        </div>
+                                    </th>
+                                    <th class="sortable-col">
+                                        2학년 학생수
+                                        <div class="sort-btns">
+                                            <button class="sort-btn" data-col="g2" data-dir="desc" title="내림차순">▼</button>
+                                            <button class="sort-btn" data-col="g2" data-dir="asc" title="오름차순">▲</button>
+                                        </div>
+                                    </th>
+                                    <th class="sortable-col">
+                                        3학년 학생수
+                                        <div class="sort-btns">
+                                            <button class="sort-btn" data-col="g3" data-dir="desc" title="내림차순">▼</button>
+                                            <button class="sort-btn" data-col="g3" data-dir="asc" title="오름차순">▲</button>
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="highSchoolTableBody">
+                                <!-- 데이터가 여기에 동적으로 들어갑니다 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- SGIS Auth Modal -->
+        <div id="authModal" class="modal">
+            <div class="modal-content card">
+                <h3>SGIS API 상태</h3>
+                <p>API 인증키는 서버(run_server.py)에서 관리됩니다.</p>
+                <p style="color:#2ea043; margin-top:10px;">✅ 서비스 ID: b9f5f345dcd...</p>
+                <p style="color:#2ea043;">✅ 보안키: f35f7ef12a7...</p>
+                <p style="margin-top:15px; color:#8b949e; font-size:0.85rem;">
+                    ⚠️ 치안 안심: SGIS에 CCTV/보안등 전용 API 없음 → 기본값 50 사용<br>
+                    ⚠️ 내신확보 유리도: 중학 엘리트 고교 진학률 및 고교 점수 표준편차 기반의 역산 지수 반영<br>
+                    ⚠️ 고교당 학생수: 인구/고교수 비율로 추정
+                </p>
+                <div class="modal-actions">
+                    <button id="closeModal" class="btn-text">닫기</button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2026 고등학교 어디가? - 데이터 기반 분석 서비스</p>
+            <div class="footer-bottom-row">
+                <p class="produced-by">Produced by <span>nammu98</span></p>
+                <div class="footer-links">
+                    <a href="mailto:nammu98@naver.com" class="footer-link">
+                        <span class="icon">📧</span> 문의 메일
+                    </a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>

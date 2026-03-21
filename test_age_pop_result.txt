@@ -1,0 +1,36 @@
+﻿=== jumin.mois.go.kr 연령별 인구 API 테스트 ===
+HTTP 200
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+
+<html lang="ko">
+
+<head>
+
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+<title>행정동별 연령별 인구현황</title>
+
+
+
+<script type="text/javascript" src="js/jquery-3.5.0.min.js"></script>
+
+<script type="text/javascript" src="js/re_style.js"></script>
+
+<script type="text/javascript" src="js/DataTables/datatables.js"></script>
+
+<script type="text/javascript" src="js/DataTables/Scroller-2.0.0/js/dataTables.
+
+=== 행안부 연령별 인구 통계 REST API 확인 ===
+Error: HTTP Error 500: Internal Server Error
