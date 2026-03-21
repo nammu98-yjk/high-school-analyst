@@ -11,8 +11,8 @@ class App {
     }
 
     async init() {
-        console.log('App initialization...');
         this.initElements();
+        this.setLoading(true, '서버를 깨우고 데이터를 불러오는 중...');
         this.initEvents();
         this.initMap();
         this.initChart();
@@ -22,7 +22,21 @@ class App {
             this.els.selectedAreaLabel.textContent = '⚠️ SGIS 토큰 발급 실패. 서버 로그 확인';
         }
         await this.loadCities();
+        this.setLoading(false);
         console.log('App ready.');
+    }
+
+    setLoading(show, msg = '데이터 로딩 중...') {
+        const overlay = document.getElementById('loadingOverlay');
+        const text = document.getElementById('loadingMsg');
+        if (overlay) {
+            if (show) {
+                if (text) text.textContent = msg;
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
     }
 
     initElements() {
@@ -165,6 +179,7 @@ class App {
         this.els.analyzeBtn.textContent = '⏳ 분석 중...';
         this.els.analyzeBtn.disabled = true;
         this.els.bestDongLabel.textContent = '';
+        this.setLoading(true, `${fullPath} 지역 데이터 분석 중...`);
 
         try {
             const data = await this.api.analyze(distCd, distName, 'district');
@@ -215,6 +230,7 @@ class App {
         } catch (e) {
             this.els.selectedAreaLabel.textContent = '❌ 분석 오류. 서버 로그 확인.';
         } finally {
+            this.setLoading(false);
             this.els.analyzeBtn.textContent = '분석 실행';
             this.els.analyzeBtn.disabled = false;
         }

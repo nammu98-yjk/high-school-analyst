@@ -25,10 +25,17 @@
                     <h1>고등학교 어디가?</h1>
                 </div>
                 <p class="service-intro">* 공공데이터 기반 대입에 가장 유리한 지역을 찾아주는 서비스(정보가 많아 PC에 최적화되어 있습니다.)</p>
+                <p class="service-notice">* 무료서버 버전이라, 오래간만에 접속시 로딩속도가 있습니다. 잠시만 기다려 주세요.</p>
             </div>
         </header>
 
         <main>
+            <div id="loadingOverlay" class="loading-overlay hidden">
+                <div class="loader-box">
+                    <div class="spinner"></div>
+                    <p id="loadingMsg">데이터 분석 중...</p>
+                </div>
+            </div>
             <section class="search-section card">
                 <div class="search-controls">
                     <select id="citySelect">
