@@ -35,6 +35,16 @@ async function fetchSgisWithCache(path, token, env) {
 
     const url = `${SGIS_BASE}${path}${path.includes('?') ? '&' : '?'}accessToken=${token}`;
     const resp = await fetch(url);
+    
+    // JSON 응답이 아닌 경우 (522 등) 처리
+    const contentType = resp.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+        const text = await resp.text();
+        console.error('[SGIS API Error Body]', text);
+        // Return a structured error to indicate the issue
+        return { errCd: -1, errMsg: `SGIS 서버 응답 오류 (상태코드: ${resp.status}) - SGIS 서버 과부하 또는 타임아웃 가능성`, result: [] };
+    }
+
     const data = await resp.json();
     
     if (data && data.errCd === 0) {
@@ -92,29 +102,42 @@ async function analyzeArea(adm_cd, area_name, level, token, env) {
         }
 
         const district_cd_sgis = adm_cd.substring(0, 5);
-        const [bulkAcad, bulkMid, bulkHigh, bulkHouseTot, bulkHouseApt, bulkPop] = await Promise.all([
+        
+        // --- [Bulk Fetch] 데이터 조회 ---
+        const bulkResults = await Promise.all([
             getBulkCompany(district_cd_sgis, 'P855', token, env),
             getBulkCompany(district_cd_sgis, 'P85211', token, env),
             getBulkCompany(district_cd_sgis, 'P85212', token, env),
             getBulkHouse(district_cd_sgis, '00', token, env),
             getBulkHouse(district_cd_sgis, '02', token, env),
-            getBulkPop(district_cd_sgis, token, env)
+            getBulkPop(district_cd_sgis, token, env),
+            Promise.all([
+                getCompanyCount(district_cd_sgis, 'P8512', token, env),
+                getCompanyCount(district_cd_sgis, 'P85211', token, env),
+                getCompanyCount(district_cd_sgis, 'P85212', token, env)
+            ])
         ]);
 
-        const bulkData = { academy: bulkAcad, middle: bulkMid, high: bulkHigh, house: bulkHouseTot, apt: bulkHouseApt, population: bulkPop };
+        const bulkData = {
+            academy: bulkResults[0],
+            middle: bulkResults[1],
+            high: bulkResults[2],
+            house: bulkResults[3],
+            apt: bulkResults[4],
+            population: bulkResults[5]
+        };
+        const [e_d, m_d, h_d] = bulkResults[6];
+        const districtCounts = { elem_dist: e_d, mid_dist: m_d, high_dist: h_d };
 
-        const [elem_dist, mid_dist, high_dist] = await Promise.all([
-            getCompanyCount(district_cd_sgis, 'P8512', token, env),
-            getCompanyCount(district_cd_sgis, 'P85211', token, env),
-            getCompanyCount(district_cd_sgis, 'P85212', token, env)
-        ]);
-        const districtCounts = { elem_dist, mid_dist, high_dist };
-
-        const results = await Promise.all(subAreas.map(area => analyzeSingleAreaWithData(area.cd, area.addr_name, districtCounts, bulkData)));
-        const filtered = results.filter(r => r !== null);
-        filtered.sort((a, b) => b.totalScore - a.totalScore);
+        // 순차 처리를 통해 CPU 피크 부하 방지
+        const results = [];
+        for (const area of subAreas) {
+            const res = await analyzeSingleAreaWithData(area.cd, area.addr_name, districtCounts, bulkData);
+            if (res) results.push(res);
+        }
         
-        return filtered.length > 0 ? filtered : [await analyzeSingleAreaWithData(adm_cd, area_name, districtCounts, bulkData)];
+        results.sort((a, b) => b.totalScore - a.totalScore);
+        return results;
     }
 }
 

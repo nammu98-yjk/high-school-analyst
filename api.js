@@ -31,6 +31,15 @@ export class ApiService {
     async analyze(adm_cd, name, level = 'dong') {
         const url = `/api/analyze?adm_cd=${adm_cd}&name=${encodeURIComponent(name)}&level=${level}`;
         const res = await fetch(url);
+        
+        // JSON 응답이 아닌 경우 (522 등) 처리
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await res.text();
+            console.error('[API Error Body]', text);
+            return { error: `서버 응답 오류 (상태코드: ${res.status}) - 데이터량이 너무 많아 타임아웃이 발생했거나 SGIS 서버가 응답하지 않습니다.` };
+        }
+        
         return await res.json();
     }
 }
