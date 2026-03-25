@@ -6,7 +6,7 @@ export const SGIS_CONSUMER_SECRET = 'f35f7ef12a774550be0e';
  * 프론트엔드는 백엔드 API만 호출합니다.
  */
 export class ApiService {
-    constructor() {}
+    constructor() { }
 
     async init() {
         // 토큰 상태 확인

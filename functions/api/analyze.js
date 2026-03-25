@@ -68,7 +68,7 @@ async function analyzeArea(adm_cd, area_name, level, token, env) {
     if (level === 'dong') {
         return await analyzeSingleArea(adm_cd, area_name, token, env);
     } else {
-        const subData = await fetchSgis(`/addr/stage.json?cd=${adm_cd}`, token);
+        const subData = await fetchSgisWithCache(`/addr/stage.json?cd=${adm_cd}`, token, env);
         const subAreas = (subData && subData.errCd === 0) ? subData.result : [];
 
         if (subAreas.length === 0) {
@@ -76,23 +76,32 @@ async function analyzeArea(adm_cd, area_name, level, token, env) {
             return res ? [res] : [];
         }
 
-        const results = await Promise.all(subAreas.map(area => analyzeSingleArea(area.cd, area.addr_name, token, env)));
+        const district_cd_sgis = adm_cd.substring(0, 5);
+        // 구(District) 단위 정보는 공통이므로 한 번만 미리 조회 (성능 최적화)
+        const [elem_dist, mid_dist, high_dist] = await Promise.all([
+            getCompanyCount(district_cd_sgis, 'P8512', token, env),
+            getCompanyCount(district_cd_sgis, 'P85211', token, env),
+            getCompanyCount(district_cd_sgis, 'P85212', token, env)
+        ]);
+        const districtCounts = { elem_dist, mid_dist, high_dist };
+
+        const results = await Promise.all(subAreas.map(area => analyzeSingleArea(area.cd, area.addr_name, token, env, districtCounts)));
         const filtered = results.filter(r => r !== null);
         filtered.sort((a, b) => b.totalScore - a.totalScore);
         
-        return filtered.length > 0 ? filtered : [await analyzeSingleArea(adm_cd, area_name, token, env)];
+        return filtered.length > 0 ? filtered : [await analyzeSingleArea(adm_cd, area_name, token, env, districtCounts)];
     }
 }
 
-async function analyzeSingleArea(adm_cd, area_name, token, env) {
+async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts = null) {
     const district_cd_sgis = adm_cd.substring(0, 5);
     const sido_prefix = adm_cd.substring(0, 2);
     const standard_sido = SGIS_TO_SI_SIDO[sido_prefix] || sido_prefix;
 
     // 1. 구 이름 찾기
     let district_name = area_name;
-    const districtData = await fetchSgis(`/addr/stage.json?cd=${sido_prefix}`, token);
-    if (districtData && districtData.errCd === 0) {
+    const districtData = await fetchSgisWithCache(`/addr/stage.json?cd=${sido_prefix}`, token, env);
+    if (districtData && districtData.errCd === 0 && districtData.result) {
         const d = districtData.result.find(item => item.cd === district_cd_sgis);
         if (d) district_name = d.addr_name;
     }
@@ -111,16 +120,30 @@ async function analyzeSingleArea(adm_cd, area_name, token, env) {
     }
 
     // 3. 인프라 데이터 (SGIS)
-    const [elem_dist, mid_dist, high_dist, academy, mid_dong, high_dong, hs_stats, population_res] = await Promise.all([
-        getCompanyCount(district_cd_sgis, 'P8512', token, env),
-        getCompanyCount(district_cd_sgis, 'P85211', token, env),
-        getCompanyCount(district_cd_sgis, 'P85212', token, env),
-        getCompanyCount(adm_cd, 'P855', token, env),
-        getCompanyCount(adm_cd, 'P85211', token, env),
-        getCompanyCount(adm_cd, 'P85212', token, env),
+    const tasks = [
+        getCompanyCount(adm_cd, 'P855', token, env), // academy
+        getCompanyCount(adm_cd, 'P85211', token, env), // mid_dong
+        getCompanyCount(adm_cd, 'P85212', token, env), // high_dong
         getHouseStats(adm_cd, token, env),
         getPopulation(adm_cd, token, env)
-    ]);
+    ];
+
+    // districtCounts가 없으면(개별 동 조회 시) 수동으로 조회
+    if (!districtCounts) {
+        tasks.push(getCompanyCount(district_cd_sgis, 'P8512', token, env));
+        tasks.push(getCompanyCount(district_cd_sgis, 'P85211', token, env));
+        tasks.push(getCompanyCount(district_cd_sgis, 'P85212', token, env));
+    }
+
+    const res = await Promise.all(tasks);
+    const [academy, mid_dong, high_dong, hs_stats, population_res] = res;
+    
+    let elem_dist, mid_dist, high_dist;
+    if (districtCounts) {
+        ({ elem_dist, mid_dist, high_dist } = districtCounts);
+    } else {
+        [,,,,, elem_dist, mid_dist, high_dist] = res; 
+    }
 
     const house = hs_stats.total;
     const apartment_ratio = hs_stats.ratio;

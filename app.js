@@ -17,11 +17,16 @@ class App {
         this.initMap();
         this.initChart();
         
-        const ok = await this.api.init();
-        if (!ok) {
+        // 병렬로 초기 서버 통신 진행
+        const [tokenOk] = await Promise.all([
+            this.api.init(),
+            this.loadCities()
+        ]);
+
+        if (!tokenOk) {
             this.els.selectedAreaLabel.textContent = '⚠️ SGIS 토큰 발급 실패. 서버 로그 확인';
         }
-        await this.loadCities();
+
         this.setLoading(false);
         console.log('App ready.');
     }
