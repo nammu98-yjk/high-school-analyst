@@ -17,16 +17,12 @@ class App {
         this.initMap();
         this.initChart();
         
-        // 병렬로 초기 서버 통신 진행
-        const [tokenOk] = await Promise.all([
-            this.api.init(),
-            this.loadCities()
-        ]);
-
+        const tokenOk = await this.api.init();
         if (!tokenOk) {
             this.els.selectedAreaLabel.textContent = '⚠️ SGIS 토큰 발급 실패. 서버 로그 확인';
         }
 
+        await this.loadCities();
         this.setLoading(false);
         console.log('App ready.');
     }
@@ -189,10 +185,6 @@ class App {
         try {
             const data = await this.api.analyze(distCd, distName, 'district');
             
-            if (data && data.error) {
-                throw new Error(data.error);
-            }
-            
             // 고등학교현황 데이터 문서화 (지역명 포함)
             this.allSchoolsData = [];
             
@@ -238,9 +230,7 @@ class App {
 
         } catch (e) {
             console.error('Analyze Error:', e);
-            const errMsg = e.message || '데이터를 불러오는 중 오류가 발생했습니다.';
-            this.els.selectedAreaLabel.textContent = `❌ 오류: ${errMsg}`;
-            alert(`분석 오류가 발생했습니다: ${errMsg}`);
+            this.els.selectedAreaLabel.textContent = '❌ 데이터 로딩 중 오류가 발생했습니다.';
         } finally {
             this.setLoading(false);
             this.els.analyzeBtn.textContent = '분석 실행';

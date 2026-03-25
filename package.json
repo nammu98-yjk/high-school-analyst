@@ -1,12 +1,8 @@
 {
   "name": "school-district-analytics",
   "version": "1.0.0",
-  "description": "Cloudflare Pages-ready School District Analytics System",
+  "description": "School District Analytics System",
   "scripts": {
-    "dev": "wrangler pages dev .",
-    "deploy": "wrangler pages deploy ."
-  },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
+    "start": "python run_server.py"
   }
 }
