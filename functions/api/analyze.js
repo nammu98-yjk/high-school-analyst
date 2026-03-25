@@ -85,7 +85,22 @@ async function analyzeArea(adm_cd, area_name, level, token, env) {
         ]);
         const districtCounts = { elem_dist, mid_dist, high_dist };
 
-        const results = await Promise.all(subAreas.map(area => analyzeSingleArea(area.cd, area.addr_name, token, env, districtCounts)));
+        const results = [];
+        const batchSize = 5; // 한 번에 처리할 동의 개수 (Cloudflare 서브요청 제한 방지)
+        
+        for (let i = 0; i < subAreas.length; i += batchSize) {
+            const batch = subAreas.slice(i, i + batchSize);
+            const batchResults = await Promise.all(
+                batch.map(area => analyzeSingleArea(area.cd, area.addr_name, token, env, districtCounts)
+                    .catch(err => {
+                        console.error(`[Analysis Fail] ${area.addr_name}:`, err);
+                        return null;
+                    })
+                )
+            );
+            results.push(...batchResults);
+        }
+
         const filtered = results.filter(r => r !== null);
         filtered.sort((a, b) => b.totalScore - a.totalScore);
         

@@ -189,6 +189,10 @@ class App {
         try {
             const data = await this.api.analyze(distCd, distName, 'district');
             
+            if (data && data.error) {
+                throw new Error(data.error);
+            }
+            
             // 고등학교현황 데이터 문서화 (지역명 포함)
             this.allSchoolsData = [];
             
@@ -233,7 +237,10 @@ class App {
             await this.drawInfographicMap(distCd, scoreMap);
 
         } catch (e) {
-            this.els.selectedAreaLabel.textContent = '❌ 분석 오류. 서버 로그 확인.';
+            console.error('Analyze Error:', e);
+            const errMsg = e.message || '데이터를 불러오는 중 오류가 발생했습니다.';
+            this.els.selectedAreaLabel.textContent = `❌ 오류: ${errMsg}`;
+            alert(`분석 오류가 발생했습니다: ${errMsg}`);
         } finally {
             this.setLoading(false);
             this.els.analyzeBtn.textContent = '분석 실행';
