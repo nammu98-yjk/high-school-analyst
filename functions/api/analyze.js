@@ -66,18 +66,43 @@ export async function onRequest(context) {
 
 async function analyzeArea(adm_cd, area_name, level, token, env) {
     if (level === 'dong') {
-        return await analyzeSingleArea(adm_cd, area_name, token, env);
+        const district_cd_sgis = adm_cd.substring(0, 5);
+        const [bulkAcad, bulkMid, bulkHigh, bulkHouseTot, bulkHouseApt, bulkPop] = await Promise.all([
+            getBulkCompany(adm_cd, 'P855', token, env),
+            getBulkCompany(adm_cd, 'P85211', token, env),
+            getBulkCompany(adm_cd, 'P85212', token, env),
+            getBulkHouse(adm_cd, '00', token, env),
+            getBulkHouse(adm_cd, '02', token, env),
+            getBulkPop(adm_cd, token, env)
+        ]);
+        const bulkData = { academy: bulkAcad, middle: bulkMid, high: bulkHigh, house: bulkHouseTot, apt: bulkHouseApt, population: bulkPop };
+        const [elem_dist, mid_dist, high_dist] = await Promise.all([
+            getCompanyCount(district_cd_sgis, 'P8512', token, env),
+            getCompanyCount(district_cd_sgis, 'P85211', token, env),
+            getCompanyCount(district_cd_sgis, 'P85212', token, env)
+        ]);
+        const districtCounts = { elem_dist, mid_dist, high_dist };
+        return await analyzeSingleAreaWithData(adm_cd, area_name, districtCounts, bulkData);
     } else {
         const subData = await fetchSgisWithCache(`/addr/stage.json?cd=${adm_cd}`, token, env);
         const subAreas = (subData && subData.errCd === 0) ? subData.result : [];
 
         if (subAreas.length === 0) {
-            const res = await analyzeSingleArea(adm_cd, area_name, token, env);
-            return res ? [res] : [];
+            return await analyzeArea(adm_cd, area_name, 'dong', token, env);
         }
 
         const district_cd_sgis = adm_cd.substring(0, 5);
-        // 구(District) 단위 정보는 공통이므로 한 번만 미리 조회 (성능 최적화)
+        const [bulkAcad, bulkMid, bulkHigh, bulkHouseTot, bulkHouseApt, bulkPop] = await Promise.all([
+            getBulkCompany(district_cd_sgis, 'P855', token, env),
+            getBulkCompany(district_cd_sgis, 'P85211', token, env),
+            getBulkCompany(district_cd_sgis, 'P85212', token, env),
+            getBulkHouse(district_cd_sgis, '00', token, env),
+            getBulkHouse(district_cd_sgis, '02', token, env),
+            getBulkPop(district_cd_sgis, token, env)
+        ]);
+
+        const bulkData = { academy: bulkAcad, middle: bulkMid, high: bulkHigh, house: bulkHouseTot, apt: bulkHouseApt, population: bulkPop };
+
         const [elem_dist, mid_dist, high_dist] = await Promise.all([
             getCompanyCount(district_cd_sgis, 'P8512', token, env),
             getCompanyCount(district_cd_sgis, 'P85211', token, env),
@@ -85,45 +110,27 @@ async function analyzeArea(adm_cd, area_name, level, token, env) {
         ]);
         const districtCounts = { elem_dist, mid_dist, high_dist };
 
-        const results = [];
-        const batchSize = 5; // 한 번에 처리할 동의 개수 (Cloudflare 서브요청 제한 방지)
-        
-        for (let i = 0; i < subAreas.length; i += batchSize) {
-            const batch = subAreas.slice(i, i + batchSize);
-            const batchResults = await Promise.all(
-                batch.map(area => analyzeSingleArea(area.cd, area.addr_name, token, env, districtCounts)
-                    .catch(err => {
-                        console.error(`[Analysis Fail] ${area.addr_name}:`, err);
-                        return null;
-                    })
-                )
-            );
-            results.push(...batchResults);
-        }
-
+        const results = await Promise.all(subAreas.map(area => analyzeSingleAreaWithData(area.cd, area.addr_name, districtCounts, bulkData)));
         const filtered = results.filter(r => r !== null);
         filtered.sort((a, b) => b.totalScore - a.totalScore);
         
-        return filtered.length > 0 ? filtered : [await analyzeSingleArea(adm_cd, area_name, token, env, districtCounts)];
+        return filtered.length > 0 ? filtered : [await analyzeSingleAreaWithData(adm_cd, area_name, districtCounts, bulkData)];
     }
 }
 
-async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts = null) {
+/**
+ * 미리 준비된 데이터를 사용하여 단일 행정구역 분석 (네트워크 통신 최소화)
+ */
+async function analyzeSingleAreaWithData(adm_cd, area_name, districtCounts, bulkData) {
     const district_cd_sgis = adm_cd.substring(0, 5);
     const sido_prefix = adm_cd.substring(0, 2);
     const standard_sido = SGIS_TO_SI_SIDO[sido_prefix] || sido_prefix;
 
-    // 1. 구 이름 찾기
     let district_name = area_name;
-    const districtData = await fetchSgisWithCache(`/addr/stage.json?cd=${sido_prefix}`, token, env);
-    if (districtData && districtData.errCd === 0 && districtData.result) {
-        const d = districtData.result.find(item => item.cd === district_cd_sgis);
-        if (d) district_name = d.addr_name;
-    }
 
-    // 2. DB 조회
+    // 1. DB 조회
     let dbEntry = null;
-    const searchName = district_name.replace(/\s/g, '');
+    const searchName = area_name.replace(/\s/g, ''); 
     for (const [code, entry] of Object.entries(SCHOOLS_DB)) {
         if (code.substring(0, 2) === standard_sido) {
             const dbName = (entry.name || "").replace(/\s/g, '');
@@ -134,37 +141,18 @@ async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts =
         }
     }
 
-    // 3. 인프라 데이터 (SGIS)
-    const tasks = [
-        getCompanyCount(adm_cd, 'P855', token, env), // academy
-        getCompanyCount(adm_cd, 'P85211', token, env), // mid_dong
-        getCompanyCount(adm_cd, 'P85212', token, env), // high_dong
-        getHouseStats(adm_cd, token, env),
-        getPopulation(adm_cd, token, env)
-    ];
+    // 2. 인프라 데이터 (BulkData 활용)
+    const academy = bulkData.academy[adm_cd] || 0;
+    const mid_dong = bulkData.middle[adm_cd] || 0;
+    const high_dong = bulkData.high[adm_cd] || 0;
+    const house = bulkData.house[adm_cd] || 0;
+    const h_apt = bulkData.apt[adm_cd] || 0;
+    const population = bulkData.population[adm_cd] || 0;
 
-    // districtCounts가 없으면(개별 동 조회 시) 수동으로 조회
-    if (!districtCounts) {
-        tasks.push(getCompanyCount(district_cd_sgis, 'P8512', token, env));
-        tasks.push(getCompanyCount(district_cd_sgis, 'P85211', token, env));
-        tasks.push(getCompanyCount(district_cd_sgis, 'P85212', token, env));
-    }
+    const apartment_ratio = house > 0 ? Number((h_apt / house * 100).toFixed(1)) : 0;
+    const { elem_dist, mid_dist, high_dist } = districtCounts;
 
-    const res = await Promise.all(tasks);
-    const [academy, mid_dong, high_dong, hs_stats, population_res] = res;
-    
-    let elem_dist, mid_dist, high_dist;
-    if (districtCounts) {
-        ({ elem_dist, mid_dist, high_dist } = districtCounts);
-    } else {
-        [,,,,, elem_dist, mid_dist, high_dist] = res; 
-    }
-
-    const house = hs_stats.total;
-    const apartment_ratio = hs_stats.ratio;
-    const population = population_res || 1;
-
-    // 4. 학군지 데이터
+    // 3. 학군지 데이터
     let schools_raw = [];
     let district_gpa_index = -1;
     let district_high_gpa = {};
@@ -177,14 +165,13 @@ async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts =
         district_high_gpa = dbEntry.high_gpa || {};
         district_gpa_index = stats.elite_rate !== undefined ? stats.elite_rate : -1;
     } else {
-        // API 폴백 (간략화)
         const sgg_standard = standard_sido + adm_cd.substring(2, 5);
         schools_raw = await fetchSchoolInfoStudents(sgg_standard, district_name);
     }
 
     const avg_students = schools_raw.length > 0 ? Math.round(schools_raw.reduce((a, b) => a + b.avg, 0) / schools_raw.length) : 0;
 
-    // 5. 동 단위 학생 수 (POPULATION_DB 활용)
+    // 4. 동 단위 학생 수
     const sido_nm = { "11": "서울특별시", "23": "인천광역시", "28": "인천광역시", "31": "경기도" }[sido_prefix] || "경기도";
     let dong_students = 0;
     let dong_students_source = "추정치";
@@ -211,7 +198,7 @@ async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts =
         }
     }
 
-    // 6. 점수 산출 (기존 로직 이식)
+    // 5. 점수 산출
     const denom = high_dist > 0 ? high_dist : 0.1;
     const school_balance_score = Math.min(Math.round(((elem_dist + mid_dist) / denom) * 20), 100);
 
@@ -236,8 +223,8 @@ async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts =
     if (avg_students > 0) {
         students_score = Math.min(Math.round((avg_students / 300) * 100), 100);
     } else {
-        const pop_dist = await getPopulation(district_cd_sgis, token, env);
-        const pop_per_school = pop_dist / (high_dist + 0.1);
+        // 동 단위 인구 데이터 활용
+        const pop_per_school = population / (high_dist + 0.1);
         students_score = Math.min(Math.max(100 - Math.round((pop_per_school / 20000) * 50), 0), 100);
         data_source_note = "데이터 공백 (인구 기반 추정치)";
     }
@@ -246,13 +233,12 @@ async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts =
     let intensity_note = "";
     if (district_gpa_index >= 0) {
         const score_a = Math.max(0, Math.min(100, 100 - (district_gpa_index / 12.0) * 100));
-        let score_b = 0;
         if (district_high_gpa && !district_high_gpa.error) {
             std_dev = district_high_gpa.mean_std_dev || 0;
             a_rate = district_high_gpa.mean_a_rate || 0;
         }
         if (std_dev > 0) {
-            score_b = Math.max(0, Math.min(100, (std_dev - 12) / 8.0 * 100));
+            const score_b = Math.max(0, Math.min(100, (std_dev - 12) / 8.0 * 100));
             gpa_intensity_score = Math.round(score_a * 0.5 + score_b * 0.5);
         } else {
             gpa_intensity_score = Math.round(score_a);
@@ -311,6 +297,44 @@ async function analyzeSingleArea(adm_cd, area_name, token, env, districtCounts =
 }
 
 // === 상세 수집 함수들 ===
+// === 벌크 수집 함수들 (SGIS low_search=1 최적화) ===
+async function getBulkCompany(adm_cd, class_code, token, env) {
+    const url = `/stats/company.json?adm_cd=${adm_cd}&year=2023&class_code=${class_code}&low_search=1`;
+    const data = await fetchSgisWithCache(url, token, env);
+    const map = {};
+    if (data && data.errCd === 0 && data.result) {
+        data.result.forEach(r => {
+            const val = r.corp_cnt !== 'N/A' ? parseInt(r.corp_cnt) : (r.tot_worker !== 'N/A' && parseInt(r.tot_worker) > 0 ? 1 : 0);
+            map[r.adm_cd] = val;
+        });
+    }
+    return map;
+}
+
+async function getBulkHouse(adm_cd, type, token, env) {
+    const url = `/stats/house.json?adm_cd=${adm_cd}&year=2022&low_search=1${type === '02' ? '&house_type=02' : ''}`;
+    const data = await fetchSgisWithCache(url, token, env);
+    const map = {};
+    if (data && data.errCd === 0 && data.result) {
+        data.result.forEach(r => {
+            map[r.adm_cd] = safeInt(r.house_cnt);
+        });
+    }
+    return map;
+}
+
+async function getBulkPop(adm_cd, token, env) {
+    const url = `/stats/population.json?adm_cd=${adm_cd}&year=2023&low_search=1`;
+    const data = await fetchSgisWithCache(url, token, env);
+    const map = {};
+    if (data && data.errCd === 0 && data.result) {
+        data.result.forEach(r => {
+            map[r.adm_cd] = safeInt(r.tot_ppltn);
+        });
+    }
+    return map;
+}
+
 async function getCompanyCount(adm_cd, class_code, token, env) {
     const url = `/stats/company.json?adm_cd=${adm_cd}&year=2023&class_code=${class_code}&low_search=0`;
     const data = await fetchSgisWithCache(url, token, env);
@@ -348,6 +372,5 @@ async function getPopulation(adm_cd, token, env) {
 }
 
 async function fetchSchoolInfoStudents(sgg_code, sgg_name) {
-    // SchoolAlimi API 호출 (간략화된 버전)
     return [];
 }
