@@ -1,6 +1,6 @@
 import { getSgisToken, jsonResponse, getCache, setCache } from './service.js';
-import SCHOOLS_DB from '../db/schools_db.json' assert { type: 'json' };
-import POPULATION_DB from '../db/population_db.json' assert { type: 'json' };
+import SCHOOLS_DB from '../db/schools_db.json';
+import POPULATION_DB from '../db/population_db.json';
 
 const SGIS_BASE = 'https://sgisapi.kostat.go.kr/OpenAPI3';
 const SCHOOL_API_KEY = '709cf20f70e64310bc84a0c5d945a9ea';
@@ -44,19 +44,24 @@ async function fetchSgisWithCache(path, token, env) {
 }
 
 export async function onRequest(context) {
-    const { request, env } = context;
-    const url = new URL(request.url);
-    const adm_cd = url.searchParams.get('adm_cd');
-    const name = url.searchParams.get('name');
-    const level = url.searchParams.get('level') || 'dong';
+    try {
+        const { request, env } = context;
+        const url = new URL(request.url);
+        const adm_cd = url.searchParams.get('adm_cd');
+        const name = url.searchParams.get('name');
+        const level = url.searchParams.get('level') || 'dong';
 
-    if (!adm_cd) return jsonResponse({ error: 'adm_cd required' }, 400);
+        if (!adm_cd) return jsonResponse({ error: 'adm_cd required' }, 400);
 
-    const token = await getSgisToken(env);
-    if (!token) return jsonResponse({ error: 'Token failed' }, 500);
+        const token = await getSgisToken(env);
+        if (!token) return jsonResponse({ error: 'Token failed' }, 500);
 
-    const result = await analyzeArea(adm_cd, name, level, token, env);
-    return jsonResponse(result);
+        const result = await analyzeArea(adm_cd, name, level, token, env);
+        return jsonResponse(result);
+    } catch (err) {
+        console.error('[API Error]', err);
+        return jsonResponse({ error: err.message, stack: err.stack }, 500);
+    }
 }
 
 async function analyzeArea(adm_cd, area_name, level, token, env) {

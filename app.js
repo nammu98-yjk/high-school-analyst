@@ -12,7 +12,7 @@ class App {
 
     async init() {
         this.initElements();
-        this.setLoading(true, '서버를 깨우고 데이터를 불러오는 중...');
+        this.setLoading(true, '데이터 분석 엔진 가동 중...');
         this.initEvents();
         this.initMap();
         this.initChart();
